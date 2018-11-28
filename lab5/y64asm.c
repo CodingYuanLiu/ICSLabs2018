@@ -167,6 +167,11 @@ void add_reloc(char *name, bin_t *bin)
     /* create new reloc_t (don't forget to free it)*/
     
     /* add the new reloc_t to relocation table */
+    reloc_t *newreloc = (reloc_t*)malloc(sizeof(reloc_t));
+    newreloc->name = name;
+    newreloc->y64bin = bin;
+    newreloc->next = reltab;
+    reltab = newreloc;
 }
 
 
@@ -207,8 +212,22 @@ parse_t parse_instr(char **ptr, instr_t **inst)
     /* find_instr and check end */
 
     /* set 'ptr' and 'inst' */
-
-    return PARSE_ERR;
+    char* charinst = *ptr;
+    SKIP_BLANK(charinst);
+    instr_t* instptr = find_instr(charinst);
+    if(!instptr)
+    {
+        return PARSE_ERR;
+    }
+    charinst += instptr->len;
+    if(!IS_END(charinst) && !IS_BLANK(charinst))
+    {
+        return PARSE_ERR;
+    }
+    *ptr = charinst;
+    *inst = instptr;
+    return PARSE_INSTR;
+        
 }
 
 /*
@@ -225,8 +244,16 @@ parse_t parse_delim(char **ptr, char delim)
     /* skip the blank and check */
 
     /* set 'ptr' */
+    char *delimptr = *ptr;
+    SKIP_BLANK(delimptr);
+    if(*delimptr != delim)
+    {
+        return PARSE_ERR;
+    }
+    delimptr++;
+    *ptr = delimptr;
+    return PARSE_DELIM;
 
-    return PARSE_ERR;
 }
 
 /*
@@ -247,8 +274,18 @@ parse_t parse_reg(char **ptr, regid_t *regid)
     /* find register */
 
     /* set 'ptr' and 'regid' */
-
-    return PARSE_ERR;
+    char* charreg = *ptr;
+    SKIP_BLANK(charreg);
+    reg_t* regptr = find_register(charreg);
+    if(!regptr)
+    {
+        return PARSE_ERR;
+    }
+    charreg += regptr->namelen;
+    
+    *ptr = charreg;
+    *regid = regptr->id;
+    return PARSE_REG;
 }
 
 /*
@@ -269,8 +306,26 @@ parse_t parse_symbol(char **ptr, char **name)
     /* allocate name and copy to it */
 
     /* set 'ptr' and 'name' */
-
-    return PARSE_ERR;
+    char *charsym = *ptr;
+    SKIP_BLANK(charsym);
+    char *symname;
+    char *namestart = charsym;
+    if(!IS_LETTER(charsym))
+    {
+        return PARSE_ERR;
+    }
+    char symlen = 0;
+    while(IS_LETTER(charsym) || IS_DIGIT(charsym))
+    {
+        symlen++;
+        charsym++;
+    }
+    symname = (char *)malloc(charsym+1);
+    memcpy(symname,namestart,symlen);
+    symname[symlen] = '\0';
+    *ptr = charsym;
+    *name = symname;
+    return PARSE_SYMBOL;
 }
 
 /*
@@ -291,9 +346,19 @@ parse_t parse_digit(char **ptr, long *value)
     /* calculate the digit, (NOTE: see strtoll()) */
 
     /* set 'ptr' and 'value' */
-
-    return PARSE_ERR;
-
+    char* chardigit = *ptr;
+    long val;
+    SKIP_BLANK(chardigit);
+    if(!IS_IMM(chardigit) || !IS_DIGIT((chardigit + 1)))
+    {
+        return PARSE_ERR;
+    }
+    chardigit++;
+    val = (long)strtoul(chardigit,&chardigit,0);
+    
+    *ptr = chardigit;
+    *value = val;
+    return PARSE_DIGIT;
 }
 
 /*
@@ -315,14 +380,21 @@ parse_t parse_digit(char **ptr, long *value)
 parse_t parse_imm(char **ptr, char **name, long *value)
 {
     /* skip the blank and check */
-
+    char* immptr = *ptr;
+    SKIP_BLANK(immptr);
     /* if IS_IMM, then parse the digit */
-
+    if(IS_IMM(immptr))
+    {
+        return parse_digit(ptr,value);
+    }
     /* if IS_LETTER, then parse the symbol */
-    
+    else if(IS_LETTER(immptr))
+    {
+        return parse_symbol(ptr,name);
+    }
     /* set 'ptr' and 'name' or 'value' */
-
-    return PARSE_ERR;
+    else
+        return PARSE_ERR;
 }
 
 /*
@@ -341,12 +413,35 @@ parse_t parse_imm(char **ptr, char **name, long *value)
 parse_t parse_mem(char **ptr, long *value, regid_t *regid)
 {
     /* skip the blank and check */
-
+    char *memptr = *ptr;
+    SKIP_BLANK(memptr);
     /* calculate the digit and register, (ex: (%rbp) or 8(%rbp)) */
-
-    /* set 'ptr', 'value' and 'regid' */
-
-    return PARSE_ERR;
+    if(IS_DIGIT(memptr))
+    {
+        /* set value */
+        if(parse_digit(&memptr,value) == PARSE_ERR)
+        {
+            return PARSE_ERR;
+        }
+    }
+    if(*memptr != '(')
+    {
+        return PARSE_ERR;
+    }
+    memptr++;
+    /* set reg */
+    if(parse_reg(&memptr,regid) == PARSE_ERR)
+    {
+        return PARSE_ERR;
+    }
+    if(*memptr != ')')
+    {
+        return PARSE_ERR;
+    }
+    memptr++;
+    /* set ptr */
+    *ptr = memptr;
+    return PARSE_MEM;
 }
 
 /*
