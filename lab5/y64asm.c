@@ -463,11 +463,18 @@ parse_t parse_mem(char **ptr, long *value, regid_t *regid)
 parse_t parse_data(char **ptr, char **name, long *value)
 {
     /* skip the blank and check */
-
+    char* dataptr = *ptr;
+    SKIP_BLANK(dataptr);
     /* if IS_DIGIT, then parse the digit */
-
+    if(IS_DIGIT(dataptr))
+    {
+        return parse_digit(ptr,value);
+    }
     /* if IS_LETTER, then parse the symbol */
-
+    if(IS_LETTER(dataptr))
+    {
+        return parse_symbol(ptr,name);
+    }
     /* set 'ptr', 'name' and 'value' */
 
     return PARSE_ERR;
@@ -487,12 +494,32 @@ parse_t parse_data(char **ptr, char **name, long *value)
 parse_t parse_label(char **ptr, char **name)
 {
     /* skip the blank and check */
-
+    char* labelptr = *ptr;
+    SKIP_BLANK(labelptr);
+    char* labelstart = labelptr;
+    int labellen = 0;
     /* allocate name and copy to it */
-
+    if(!IS_LETTER(labelptr))
+    {
+        return PARSE_ERR;
+    }
+    while(IS_LETTER(labelptr)||IS_DIGIT(labelptr))
+    {
+        labelptr++;
+        labellen++;
+    }
+    if(*labelptr != ':')
+    {
+        return PARSE_ERR;
+    }
+    char* label = (char *)malloc(labellen+1);
+    memcpy(label,labelstart,labellen);
+    label[labellen]='\0';
+    labelptr++;
     /* set 'ptr' and 'name' */
-
-    return PARSE_ERR;
+    *ptr = labelptr;
+    *name = label;
+    return PARSE_LABEL;
 }
 
 /*
@@ -507,14 +534,13 @@ parse_t parse_label(char **ptr, char **name)
  */
 type_t parse_line(line_t *line)
 {
-
 /* when finish parse an instruction or lable, we still need to continue check 
 * e.g., 
 *  Loop: mrmovl (%rbp), %rcx
 *           call SUM  #invoke SUM function */
 
     /* skip blank and check IS_END */
-    
+    char* ptr = line->y64asm;
     /* is a comment ? */
 
     /* is a label ? */
@@ -562,6 +588,7 @@ int assemble(FILE *in)
         memset(line, '\0', sizeof(line_t));
 
         line->type = TYPE_COMM;
+        
         line->y64asm = y64asm;
         line->next = NULL;
 
