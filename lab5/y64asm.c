@@ -108,11 +108,7 @@ symbol_t *symtab = NULL;
  */
 symbol_t *find_symbol(char *name)
 {
-    if(!symtab)
-    {
-        return NULL;
-    }
-    for(symbol_t *temp = symtab;temp;temp=temp->next)
+    for(symbol_t *temp = symtab->next;temp;temp=temp->next)
     {
         if(!strcmp(temp->name,name))
         {
@@ -145,8 +141,8 @@ int add_symbol(char *name)
     symbol_t *sym = (symbol_t*)malloc(sizeof(symbol_t));
     sym->name = name;
     sym->addr = vmaddr;
-    sym->next = symtab;
-    symtab = sym;
+    sym->next = symtab->next;
+    symtab->next = sym;
     return 0;
 }
 
@@ -170,8 +166,8 @@ void add_reloc(char *name, bin_t *bin)
     reloc_t *newreloc = (reloc_t*)malloc(sizeof(reloc_t));
     newreloc->name = name;
     newreloc->y64bin = bin;
-    newreloc->next = reltab;
-    reltab = newreloc;
+    newreloc->next = reltab->next;
+    reltab->next = newreloc;
 }
 
 
@@ -276,7 +272,7 @@ parse_t parse_reg(char **ptr, regid_t *regid)
     /* set 'ptr' and 'regid' */
     char* charreg = *ptr;
     SKIP_BLANK(charreg);
-    reg_t* regptr = find_register(charreg);
+    const reg_t* regptr = find_register(charreg);
     if(!regptr)
     {
         return PARSE_ERR;
@@ -314,13 +310,13 @@ parse_t parse_symbol(char **ptr, char **name)
     {
         return PARSE_ERR;
     }
-    char symlen = 0;
+    int symlen = 0;
     while(IS_LETTER(charsym) || IS_DIGIT(charsym))
     {
         symlen++;
         charsym++;
     }
-    symname = (char *)malloc(charsym+1);
+    symname = (char *)malloc(symlen+1);
     memcpy(symname,namestart,symlen);
     symname[symlen] = '\0';
     *ptr = charsym;
@@ -349,12 +345,11 @@ parse_t parse_digit(char **ptr, long *value)
     char* chardigit = *ptr;
     long val;
     SKIP_BLANK(chardigit);
-    if(!IS_IMM(chardigit) || !IS_DIGIT((chardigit + 1)))
+    if(!IS_DIGIT((chardigit)))
     {
         return PARSE_ERR;
     }
-    chardigit++;
-    val = (long)strtoul(chardigit,&chardigit,0);
+    val = (long)strtoull(chardigit,&chardigit,0);
     
     *ptr = chardigit;
     *value = val;
@@ -385,6 +380,7 @@ parse_t parse_imm(char **ptr, char **name, long *value)
     /* if IS_IMM, then parse the digit */
     if(IS_IMM(immptr))
     {
+        *ptr = ++immptr;
         return parse_digit(ptr,value);
     }
     /* if IS_LETTER, then parse the symbol */
@@ -416,6 +412,10 @@ parse_t parse_mem(char **ptr, long *value, regid_t *regid)
     char *memptr = *ptr;
     SKIP_BLANK(memptr);
     /* calculate the digit and register, (ex: (%rbp) or 8(%rbp)) */
+    if(*memptr == '(')
+    {
+        *value = 0;
+    }
     if(IS_DIGIT(memptr))
     {
         /* set value */
@@ -499,6 +499,7 @@ parse_t parse_label(char **ptr, char **name)
     char* labelstart = labelptr;
     int labellen = 0;
     /* allocate name and copy to it */
+    /* If parse error, ptr should not be changed*/
     if(!IS_LETTER(labelptr))
     {
         return PARSE_ERR;
@@ -522,6 +523,16 @@ parse_t parse_label(char **ptr, char **name)
     return PARSE_LABEL;
 }
 
+/* Load long value to binary code in little endian. */
+void loadbytes(byte_t* dest,long value, int bytes)
+{
+    for(int i=0;i<bytes;i++)
+    {
+        dest[i] = ((value >> (8*i)) & 0xFF);
+    }
+}
+
+
 /*
  * parse_line: parse a line of y64 code (e.g., 'Loop: mrmovq (%rcx), %rsi')
  * (you could combine above parse_xxx functions to do it)
@@ -538,20 +549,233 @@ type_t parse_line(line_t *line)
 * e.g., 
 *  Loop: mrmovl (%rbp), %rcx
 *           call SUM  #invoke SUM function */
-
-    /* skip blank and check IS_END */
     char* ptr = line->y64asm;
+    char* name = NULL;
+    /* skip blank and check IS_END */
+    SKIP_BLANK(ptr);
+    if(IS_END(ptr))
+    {
+        return line->type;
+    }
     /* is a comment ? */
-
+    if(IS_COMMENT(ptr))
+    {
+        return TYPE_COMM;
+    }
     /* is a label ? */
-
+    if(parse_label(&ptr,&name) == PARSE_LABEL)
+    {
+        if(add_symbol(name) == -1)
+        {
+            err_print("Dup symbol:%s",name);
+            line->type = TYPE_ERR;
+            return line->type;
+        }
+    }
+    line->y64bin.addr = vmaddr;
+    if(IS_END(ptr))
+    {
+        line->type = TYPE_INS;
+        return line->type;
+    }
+    instr_t* inst;
     /* is an instruction ? */
-
+    if(parse_instr(&ptr,&inst) != PARSE_INSTR)
+    {
+        line->type = TYPE_ERR;
+        err_print("Invalid Instr")
+        return TYPE_ERR;
+    } 
     /* set type and y64bin */
-
+    line->type = TYPE_INS;
+    line->y64bin.codes[0] = inst->code;
+    line->y64bin.bytes = inst->bytes;
     /* update vmaddr */    
-
+    vmaddr += inst->bytes;
     /* parse the rest of instruction according to the itype */
+
+    regid_t rA,rB;
+    switch(HIGH(inst->code))
+    {
+        /* parse single-byte instructions */
+        case I_HALT:
+        case I_NOP:
+        case I_RET:
+            return line->type;
+        
+        /* parse double-bytes instructions with 2 registers */
+        case I_ALU:
+        case I_RRMOVQ:
+        {
+            if(parse_reg(&ptr,&rA) != PARSE_REG)
+            {
+                err_print("Invalid regs.");
+                return TYPE_ERR;
+            }
+            if(parse_delim(&ptr,',') != PARSE_DELIM)
+            {
+                err_print("Invalid delim.");
+                return TYPE_ERR;
+            }
+            if(parse_reg(&ptr,&rB) != PARSE_REG)
+            {
+                err_print("Invalid regs.");
+                return TYPE_ERR;
+            }
+            line->y64bin.codes[1] = HPACK(rA,rB);
+            return line->type;
+        }
+
+        /* parse 10-bytes instructions with constancy memory access */
+
+        long memory;
+
+        case I_RMMOVQ:
+        {
+            if(parse_reg(&ptr,&rA) != PARSE_REG)
+            {
+                err_print("Invalid regs.");
+                return TYPE_ERR;
+            }
+            if(parse_delim(&ptr,',') != PARSE_DELIM)
+            {
+                err_print("Invalid delim.");
+                return TYPE_ERR;
+            }
+            if(parse_mem(&ptr,&memory,&rB) != PARSE_MEM)
+            {
+                err_print("Invalid memory address.");
+                return TYPE_ERR;
+            }
+            line->y64bin.codes[1] = HPACK(rA,rB);
+            loadbytes(&line->y64bin.codes[2],memory,8);
+            return line->type;
+        }
+        case I_MRMOVQ:
+        {
+            if(parse_mem(&ptr,&memory,&rB) != PARSE_MEM)
+            {
+                err_print("Invalid memory address.");
+                return TYPE_ERR;
+            }
+            if(parse_delim(&ptr,',') != PARSE_DELIM)
+            {
+                err_print("Invalid delim.");
+                return TYPE_ERR;
+            }
+            if(parse_reg(&ptr,&rA) != PARSE_REG)
+            {
+                err_print("Invalid regs.");
+                return TYPE_ERR;
+            }
+            line->y64bin.codes[1] = HPACK(rA,rB);
+            loadbytes(&line->y64bin.codes[2],memory,8);
+            return line->type;
+        }
+
+        /* parse double-bytes instructions with one register only */
+        case I_PUSHQ:
+        case I_POPQ:
+        {
+            if(parse_reg(&ptr,&rA) != PARSE_REG)
+            {
+                err_print("Invalid regs.");
+                return TYPE_ERR;
+            }
+            rB = REG_NONE;
+            line->y64bin.codes[1] = HPACK(rA,rB);
+            return line->type;
+        }
+
+        /* parse instructions likely to be with an unlocated symbol. */
+        long immediate;
+
+        case I_IRMOVQ:
+        {
+            rA = REG_NONE;
+            parse_t immtype = parse_imm(&ptr,&name,&immediate);
+            if(immtype == PARSE_ERR)
+            {
+                err_print("Invalid immediate.");
+                return TYPE_ERR;
+            }
+            if(parse_delim(&ptr,',') != PARSE_DELIM)
+            {
+                err_print("Invalid delim.");
+                return TYPE_ERR;
+            }
+            if(parse_reg(&ptr,&rB) != PARSE_REG)
+            {
+                err_print("Invalid reg.");
+                return TYPE_ERR;
+            }
+            line->y64bin.codes[1] = HPACK(rA,rB);
+            /* if immediate is a constant, set bin bytes directly. */
+            if(immtype == PARSE_DIGIT)
+            {
+                loadbytes(&line->y64bin.codes[2],immediate,8);
+            }
+            /* symbol needs to be relocated later. Add it to the reloc table and leave it along*/
+            else
+            {
+                add_reloc(name,&line->y64bin);
+            }
+            return line->type;
+        }
+        case I_JMP:
+        case I_CALL:
+        {
+            if(parse_symbol(&ptr,&name) != PARSE_SYMBOL)
+            {
+                err_print("Invalid symbol");
+                return TYPE_ERR;
+            }
+            add_reloc(name,&line->y64bin);
+            return line->type;
+        }
+        
+        /* parse directive instructions */
+        case I_DIRECTIVE:
+        {
+            switch(LOW(inst->code))
+            {
+                /* .byte, .word, .long, .quad */
+                long value;
+                case D_DATA:
+                {
+                    if(parse_digit(&ptr,&value) != PARSE_DIGIT)
+                    {
+                        err_print("Invalid digit.");
+                        return TYPE_ERR;
+                    }
+                    loadbytes(&line->y64bin.codes[0],value,inst->bytes);
+                    return line->type;
+                }
+                case D_POS:
+                {
+                    if(parse_digit(&ptr,&value) != PARSE_DIGIT)
+                    {
+                        err_print("Invalid position");
+                        return TYPE_ERR;
+                    }
+                    line->y64bin.addr = value;
+                    vmaddr = value;
+                    return line->type;
+                }
+                case D_ALIGN:
+                {
+                    if(parse_digit(&ptr,&value) != PARSE_DIGIT)
+                    {
+                        err_print("Invalid alignment");
+                        return TYPE_ERR;
+                    }
+                    for(;vmaddr % value != 0;vmaddr++);
+                    line->y64bin.addr = vmaddr;
+                    return line->type;
+                }
+            }
+        }
+    }
 
     line->type = TYPE_ERR;
     return line->type;
@@ -588,7 +812,7 @@ int assemble(FILE *in)
         memset(line, '\0', sizeof(line_t));
 
         line->type = TYPE_COMM;
-        
+
         line->y64asm = y64asm;
         line->next = NULL;
 
@@ -619,9 +843,21 @@ int relocate(void)
     rtmp = reltab->next;
     while (rtmp) {
         /* find symbol */
-
+        symbol_t* sym = find_symbol(rtmp->name);
+        if(!sym)
+        {
+            err_print("undefined symbol.");
+            return -1;
+        }
         /* relocate y64bin according itype */
-
+        switch(HIGH(rtmp->y64bin->codes[0]))
+        {
+            case I_IRMOVQ:
+                loadbytes(&rtmp->y64bin->codes[2],sym->addr,8);
+            case I_JMP:
+            case I_CALL:
+                loadbytes(&rtmp->y64bin->codes[1],sym->addr,8);
+        }
         /* next */
         rtmp = rtmp->next;
     }
@@ -640,7 +876,7 @@ int relocate(void)
 int binfile(FILE *out)
 {
     /* prepare image with y64 binary code */
-
+    line_t* line = line_head->next;
     /* binary write y64 code to output file (NOTE: see fwrite()) */
     
     return 0;
