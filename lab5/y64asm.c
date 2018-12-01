@@ -573,7 +573,8 @@ type_t parse_line(line_t *line)
         }
     }
     line->y64bin.addr = vmaddr;
-    if(IS_END(ptr))
+    SKIP_BLANK(ptr);
+    if(IS_END(ptr) || IS_COMMENT(ptr))
     {
         line->type = TYPE_INS;
         return line->type;
@@ -609,17 +610,17 @@ type_t parse_line(line_t *line)
         {
             if(parse_reg(&ptr,&rA) != PARSE_REG)
             {
-                err_print("Invalid regs.");
+                err_print("Invalid REG");
                 return TYPE_ERR;
             }
             if(parse_delim(&ptr,',') != PARSE_DELIM)
             {
-                err_print("Invalid delim.");
+                err_print("Invalid \',\'");
                 return TYPE_ERR;
             }
             if(parse_reg(&ptr,&rB) != PARSE_REG)
             {
-                err_print("Invalid regs.");
+                err_print("Invalid REG");
                 return TYPE_ERR;
             }
             line->y64bin.codes[1] = HPACK(rA,rB);
@@ -634,17 +635,17 @@ type_t parse_line(line_t *line)
         {
             if(parse_reg(&ptr,&rA) != PARSE_REG)
             {
-                err_print("Invalid regs.");
+                err_print("Invalid REG");
                 return TYPE_ERR;
             }
             if(parse_delim(&ptr,',') != PARSE_DELIM)
             {
-                err_print("Invalid delim.");
+                err_print("Invalid \',\'");
                 return TYPE_ERR;
             }
             if(parse_mem(&ptr,&memory,&rB) != PARSE_MEM)
             {
-                err_print("Invalid memory address.");
+                err_print("Invalid MEM");
                 return TYPE_ERR;
             }
             line->y64bin.codes[1] = HPACK(rA,rB);
@@ -655,17 +656,17 @@ type_t parse_line(line_t *line)
         {
             if(parse_mem(&ptr,&memory,&rB) != PARSE_MEM)
             {
-                err_print("Invalid memory address.");
+                err_print("Invalid MEM");
                 return TYPE_ERR;
             }
             if(parse_delim(&ptr,',') != PARSE_DELIM)
             {
-                err_print("Invalid delim.");
+                err_print("Invalid \',\'");
                 return TYPE_ERR;
             }
             if(parse_reg(&ptr,&rA) != PARSE_REG)
             {
-                err_print("Invalid regs.");
+                err_print("Invalid REG");
                 return TYPE_ERR;
             }
             line->y64bin.codes[1] = HPACK(rA,rB);
@@ -679,7 +680,7 @@ type_t parse_line(line_t *line)
         {
             if(parse_reg(&ptr,&rA) != PARSE_REG)
             {
-                err_print("Invalid regs.");
+                err_print("Invalid REG");
                 return TYPE_ERR;
             }
             rB = REG_NONE;
@@ -696,17 +697,17 @@ type_t parse_line(line_t *line)
             parse_t immtype = parse_imm(&ptr,&name,&immediate);
             if(immtype == PARSE_ERR)
             {
-                err_print("Invalid immediate.");
+                err_print("Invalid Immediate");
                 return TYPE_ERR;
             }
             if(parse_delim(&ptr,',') != PARSE_DELIM)
             {
-                err_print("Invalid delim.");
+                err_print("Invalid \',\'");
                 return TYPE_ERR;
             }
             if(parse_reg(&ptr,&rB) != PARSE_REG)
             {
-                err_print("Invalid reg.");
+                err_print("Invalid REG");
                 return TYPE_ERR;
             }
             line->y64bin.codes[1] = HPACK(rA,rB);
@@ -727,7 +728,7 @@ type_t parse_line(line_t *line)
         {
             if(parse_symbol(&ptr,&name) != PARSE_SYMBOL)
             {
-                err_print("Invalid symbol");
+                err_print("Invalid DEST");
                 return TYPE_ERR;
             }
             add_reloc(name,&line->y64bin);
@@ -743,13 +744,21 @@ type_t parse_line(line_t *line)
                 long value;
                 case D_DATA:
                 {
-                    if(parse_digit(&ptr,&value) != PARSE_DIGIT)
+                    if(parse_digit(&ptr,&value) == PARSE_DIGIT)
                     {
-                        err_print("Invalid digit.");
+                        loadbytes(&line->y64bin.codes[0],value,inst->bytes);
+                        return line->type;
+                    }
+                    else if(parse_symbol(&ptr,&name) == PARSE_SYMBOL)
+                    {
+                        add_reloc(name,&line->y64bin);
+                        return line->type;
+                    }
+                    else 
+                    {
+                        err_print("Invalid Value");
                         return TYPE_ERR;
                     }
-                    loadbytes(&line->y64bin.codes[0],value,inst->bytes);
-                    return line->type;
                 }
                 case D_POS:
                 {
@@ -846,7 +855,7 @@ int relocate(void)
         symbol_t* sym = find_symbol(rtmp->name);
         if(!sym)
         {
-            err_print("undefined symbol.");
+            err_print("Unknown symbol:\'%s\'",rtmp->name);
             return -1;
         }
         /* relocate y64bin according itype */
@@ -854,9 +863,14 @@ int relocate(void)
         {
             case I_IRMOVQ:
                 loadbytes(&rtmp->y64bin->codes[2],sym->addr,8);
+                break;
             case I_JMP:
             case I_CALL:
                 loadbytes(&rtmp->y64bin->codes[1],sym->addr,8);
+                break;
+            case I_DIRECTIVE:
+                loadbytes(&rtmp->y64bin->codes[0],sym->addr,8);
+                break;
         }
         /* next */
         rtmp = rtmp->next;
@@ -878,7 +892,28 @@ int binfile(FILE *out)
     /* prepare image with y64 binary code */
     line_t* line = line_head->next;
     /* binary write y64 code to output file (NOTE: see fwrite()) */
-    
+    int curr_size = 0;
+    for(;line;line = line->next)
+    {
+        if(line->type == TYPE_INS)
+        {
+            /* If padding exists, skip the padding directly */
+            if(curr_size < line->y64bin.addr)
+            {
+                if(fseek(out,line->y64bin.addr,0) == -1)
+                {
+                    err_print("Skip padding error");
+                    return -1;
+                }
+            }
+            if(fwrite(line->y64bin.codes,1,line->y64bin.bytes,out) < 0)
+            {
+                err_print("Writting binary file error");
+                return -1;
+            }
+            curr_size = line->y64bin.addr + line->y64bin.bytes;
+        }
+    }
     return 0;
 }
 
