@@ -1,0 +1,42 @@
+# Liu Qingyuan 516072910016
+
+.pos 0
+irmovq stack,%rsp
+call main
+halt
+
+main:
+    irmovq ele1,%rdi
+    #long sum_list(list_ptr ls)
+    call sum_list
+    ret
+
+sum_list:
+    irmovq $0,%rax
+    irmovq $8,%rdx
+    irmovq ele1,%rdi
+    jmp test
+
+loop:
+    mrmovq (%rdi),%rsi
+    addq %rsi,%rax
+    addq %rdx,%rdi
+    mrmovq (%rdi),%rdi
+test:
+    andq %rdi,%rdi
+    jne loop
+    ret
+
+.align 8
+ele1:
+    .quad 0x00a
+    .quad ele2
+ele2:
+    .quad 0x0b0
+    .quad ele3
+ele3:
+    .quad 0xc00
+    .quad 0
+
+.pos 0x100
+stack:

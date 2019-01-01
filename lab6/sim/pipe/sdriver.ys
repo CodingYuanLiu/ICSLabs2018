@@ -1,0 +1,304 @@
+#######################################################################
+# Test for copying block of size 4;
+#######################################################################
+	.pos 0
+main:	irmovq Stack, %rsp  	# Set up stack pointer
+
+	# Set up arguments for copy function and then invoke it
+	irmovq $4, %rdx		# src and dst have 4 elements
+	irmovq dest, %rsi	# dst array
+	irmovq src, %rdi	# src array
+	call ncopy		 
+	halt			# should halt with num nonzeros in %rax
+StartFun:
+#/* $begin ncopy-ys */
+##################################################################
+# ncopy.ys - Copy a src block of len words to dst.
+# Return the number of positive words (>0) contained in src.
+# 
+# Include your name and ID here.
+# LiuQingyuan 516072910016
+# Describe how and why you modified the baseline code.
+# 1. Use loop unrolling, copy 8 items at a time to decrease the 
+# number of jump instructions.
+# 2. In each loop, in order to add the number of positive words
+# to %rax directly instead of +1 iteratively, used jumps to count 
+# the number.
+##################################################################
+# Do not modify this portion
+# Function prologue.
+# %rdi = src, %rsi = dst, %rdx = len
+ncopy:
+
+##################################################################
+# You can modify this portion
+	# Loop header
+	xorq %rax,%rax		# count = 0;
+Test8:
+	iaddq $-8,%rdx
+	jl Test2to8
+
+Loop8:	
+	mrmovq (%rdi), %rcx	# read val from src...
+	mrmovq 0x8(%rdi),%r8
+	mrmovq 0x10(%rdi),%r9
+	mrmovq 0x18(%rdi),%r10
+	mrmovq 0x20(%rdi),%r11
+	mrmovq 0x28(%rdi),%r12
+	mrmovq 0x30(%rdi),%r13
+	mrmovq 0x38(%rdi),%r14
+
+	rmmovq %rcx,(%rsi)	# ...and store it to dst
+	rmmovq %r8,0x8(%rsi)
+	rmmovq %r9,0x10(%rsi)
+	rmmovq %r10,0x18(%rsi)
+	rmmovq %r11,0x20(%rsi)
+	rmmovq %r12,0x28(%rsi)
+	rmmovq %r13,0x30(%rsi)
+	rmmovq %r14,0x38(%rsi)
+
+# NopsAB means that B values in the first A values are > 0
+# So must have B <= A <= 8
+
+Npos00:
+	andq %rcx, %rcx		# val <= 0?
+	jle Npos10		# if so, goto Npos:
+Npos11:
+    andq %r8,%r8
+    jle Npos21
+Npos22:
+    andq %r9,%r9
+    jle Npos32
+Npos33:
+    andq %r10,%r10
+    jle Npos43
+Npos44:
+    andq %r11,%r11
+    jle Npos54
+Npos55:
+    andq %r12,%r12
+    jle Npos65
+Npos66:
+    andq %r13,%r13
+    jle Npos76
+Npos77:
+    andq %r14,%r14
+    jle Npos87
+Npos88:
+    iaddq $8,%rax
+    jmp Update8
+
+Npos10:
+    andq %r8,%r8
+    jle Npos20
+Npos21:
+    andq %r9,%r9
+    jle Npos31
+Npos32:
+    andq %r10,%r10
+    jle Npos42
+Npos43:
+    andq %r11,%r11
+    jle Npos53
+Npos54:
+    andq %r12,%r12
+    jle Npos64
+Npos65:
+    andq %r13,%r13
+    jle Npos75
+Npos76:
+    andq %r14,%r14
+    jle Npos86 
+Npos87:
+    iaddq $7,%rax
+    jmp Update8
+
+Npos20:
+    andq %r9,%r9
+    jle Npos30
+Npos31:
+    andq %r10,%r10
+    jle Npos41
+Npos42:
+    andq %r11,%r11
+    jle Npos52
+Npos53:
+    andq %r12,%r12
+    jle Npos63
+Npos64:
+    andq %r13,%r13
+    jle Npos74
+Npos75:
+    andq %r14,%r14
+    jle Npos85
+Npos86:
+    iaddq $6,%rax
+    jmp Update8
+
+Npos30:
+    andq %r10,%r10
+    jle Npos40
+Npos41:
+    andq %r11,%r11
+    jle Npos51
+Npos52:
+    andq %r12,%r12
+    jle Npos62
+Npos63:
+    andq %r13,%r13
+    jle Npos73
+Npos74:
+    andq %r14,%r14
+    jle Npos84
+Npos85:
+    iaddq $5,%rax
+    jmp Update8
+
+Npos40:
+    andq %r11,%r11
+    jle Npos50
+Npos51:
+    andq %r12,%r12
+    jle Npos61
+Npos62:
+    andq %r13,%r13
+    jle Npos72
+Npos73:
+    andq %r14,%r14
+    jle Npos83
+Npos84:
+    iaddq $4,%rax
+    jmp Update8
+
+Npos50:
+    andq %r12,%r12
+    jle Npos60
+Npos61:
+    andq %r13,%r13
+    jle Npos71
+Npos72:
+    andq %r14,%r14
+    jle Npos82
+Npos83:
+    iaddq $3,%rax
+    jmp Update8
+
+Npos60:
+    andq %r13,%r13
+    jle Npos70
+Npos71:
+    andq %r14,%r14
+    jle Npos81
+Npos82:
+    iaddq $2,%rax
+    jmp Update8
+
+Npos70:
+    andq %r14,%r14
+    jle Update8
+Npos81:
+    iaddq $1,%rax
+
+Update8:
+	iaddq $0x40, %rdi		# src++
+	iaddq $0x40, %rsi		# dst++
+    iaddq $-8,%rdx
+	jg Loop8			# if so, goto Loop:
+
+
+Test2to8: # 2 <= len < 8
+	iaddq $6,%rdx # bug here
+	jl Lastone
+
+Loop2to8:
+	mrmovq (%rdi), %rcx	# read val from src...
+	mrmovq 0x8(%rdi),%r8
+
+	rmmovq %rcx, (%rsi)	# ...and store it to dst
+	rmmovq %r8,0x8(%rsi)
+
+Nposs00:
+	andq %rcx, %rcx		# val <= 0?
+	jle Nposs10
+Nposs11:
+    andq %r8,%r8
+    jle Nposs21
+Nposs22:
+    iaddq $2,%rax
+    jmp Update2to8
+
+Nposs10:
+    andq %r8,%r8
+    jle Update2to8
+Nposs21:
+    iaddq $1,%rax
+
+Update2to8:
+	iaddq $0x10,%rdi
+	iaddq $0x10,%rsi
+	iaddq $-2,%rdx
+	jge Loop2to8
+
+Lastone:
+	iaddq $1,%rdx
+	jl Done
+	mrmovq (%rdi), %r10
+	andq %r10,%r10
+	rmmovq %r10, (%rsi)
+	jle Done
+	iaddq $1,%rax
+
+
+##################################################################
+# Do not modify the following section of code
+# Function epilogue.
+Done:
+	ret
+##################################################################
+# Keep the following label at the end of your function
+End:
+#/* $end ncopy-ys */
+EndFun:
+
+###############################
+# Source and destination blocks 
+###############################
+	.align 8
+src:
+	.quad 1
+	.quad -2
+	.quad 3
+	.quad -4
+	.quad 0xbcdefa # This shouldn't get moved
+
+	.align 16
+Predest:
+	.quad 0xbcdefa
+dest:
+	.quad 0xcdefab
+	.quad 0xcdefab
+	.quad 0xcdefab
+	.quad 0xcdefab
+Postdest:
+	.quad 0xdefabc
+
+.align 8
+# Run time stack
+	.quad 0
+	.quad 0
+	.quad 0
+	.quad 0
+	.quad 0
+	.quad 0
+	.quad 0
+	.quad 0
+	.quad 0
+	.quad 0
+	.quad 0
+	.quad 0
+	.quad 0
+	.quad 0
+	.quad 0
+	.quad 0
+
+Stack:

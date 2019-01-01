@@ -1,0 +1,42 @@
+                            | # Liu Qingyuan 516072910016
+                            | 
+0x000:                      | .pos 0
+0x000: 30f40001000000000000 | irmovq stack,%rsp
+0x00a: 801400000000000000   | call main
+0x013: 00                   | halt
+                            | 
+0x014:                      | main:
+0x014: 30f77800000000000000 |     irmovq ele1,%rdi
+                            |     #long sum_list(list_ptr ls)
+0x01e: 802800000000000000   |     call sum_list
+0x027: 90                   |     ret
+                            | 
+0x028:                      | sum_list:
+0x028: 30f00000000000000000 |     irmovq $0,%rax
+0x032: 30f20800000000000000 |     irmovq $8,%rdx
+0x03c: 30f77800000000000000 |     irmovq ele1,%rdi
+0x046: 706700000000000000   |     jmp test
+                            | 
+0x04f:                      | loop:
+0x04f: 50670000000000000000 |     mrmovq (%rdi),%rsi
+0x059: 6060                 |     addq %rsi,%rax
+0x05b: 6027                 |     addq %rdx,%rdi
+0x05d: 50770000000000000000 |     mrmovq (%rdi),%rdi
+0x067:                      | test:
+0x067: 6277                 |     andq %rdi,%rdi
+0x069: 744f00000000000000   |     jne loop
+0x072: 90                   |     ret
+                            | 
+0x078:                      | .align 8
+0x078:                      | ele1:
+0x078: 0a00000000000000     |     .quad 0x00a
+0x080: 8800000000000000     |     .quad ele2
+0x088:                      | ele2:
+0x088: b000000000000000     |     .quad 0x0b0
+0x090: 9800000000000000     |     .quad ele3
+0x098:                      | ele3:
+0x098: 000c000000000000     |     .quad 0xc00
+0x0a0: 0000000000000000     |     .quad 0
+                            | 
+0x100:                      | .pos 0x100
+0x100:                      | stack:

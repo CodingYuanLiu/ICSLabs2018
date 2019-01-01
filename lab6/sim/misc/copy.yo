@@ -1,0 +1,45 @@
+                            | # Liu Qingyuan 516072910016
+0x000:                      | .pos 0
+0x000: 30f40001000000000000 | irmovq stack,%rsp
+0x00a: 801400000000000000   | call main
+0x013: 00                   | halt
+                            | 
+0x014:                      | main:
+0x014: 30f78800000000000000 |     irmovq src,%rdi
+0x01e: 30f6a000000000000000 |     irmovq dest,%rsi
+0x028: 30f20300000000000000 |     irmovq $3,%rdx
+0x032: 803c00000000000000   |     call copy_block
+0x03b: 90                   |     ret
+                            | 
+0x03c:                      | copy_block:
+0x03c: 6300                 |     xorq %rax,%rax #%rax is result
+0x03e: 30f80800000000000000 |     irmovq $8,%r8 
+0x048: 30f90100000000000000 |     irmovq $1,%r9
+0x052: 707700000000000000   |     jmp test
+                            | 
+0x05b:                      | loop:
+0x05b: 50170000000000000000 |     mrmovq (%rdi),%rcx
+0x065: 6087                 |     addq %r8,%rdi
+0x067: 40160000000000000000 |     rmmovq %rcx,(%rsi)
+0x071: 6086                 |     addq %r8,%rsi
+0x073: 6310                 |     xorq %rcx,%rax
+0x075: 6192                 |     subq %r9,%rdx
+0x077:                      | test:
+0x077: 6222                 |     andq %rdx,%rdx
+0x079: 745b00000000000000   |     jne loop
+0x082: 90                   |     ret
+                            | 
+0x088:                      | .align 8
+                            | # Source block
+0x088:                      | src:
+0x088: 0a00000000000000     | .quad 0x00a
+0x090: b000000000000000     | .quad 0x0b0
+0x098: 000c000000000000     | .quad 0xc00
+                            | # Destination block
+0x0a0:                      | dest:
+0x0a0: 1101000000000000     | .quad 0x111
+0x0a8: 2202000000000000     | .quad 0x222
+0x0b0: 3303000000000000     | .quad 0x333
+                            | 
+0x100:                      | .pos 0x100
+0x100:                      | stack:
