@@ -1,4 +1,3 @@
-# LiuQingyuan 516072910016
 # Modified instr_valid,need_regids and so on to
 # support IADDQ instruction.
 # Because of forwarding, there's no need to consider hazard caused 

@@ -1,0 +1,109 @@
+/*
+ * BUG#0
+ * description: 
+     miss semicolon
+ * location: 
+ *   int a = 10  (line 18)
+ * evidence: 
+ *   test.c:19: error: two or more data types in declaration specifiers
+ */
+
+BUG#1
+description:
+    miss semicolon
+location:
+    enum { buf_size = buf_nrec * 100 }
+evidence:
+    gen_sort.c:54:9: error: expected ‘;’, identifier or ‘(’ before ‘struct’
+
+
+
+BUG#2
+description:
+    miss semicolon
+location:
+    } record_t
+evidence:
+    gen_sort.c:60:1: error: expected ‘=’, ‘,’, ‘;’, ‘asm’ or ‘__attribute__’ before ‘static’
+
+
+
+BUG#3
+description:
+    wrong type name
+location:
+    gen_rec(record *rec)
+evidence:
+    gen_sort.c:114:9: error: unknown type name ‘record’
+
+
+BUG#4
+description:
+    miss header file "stdio.h"
+location:
+  FILE *file = fopen(fn, "r");
+evidence:
+    gen_sort.c:187:2: error: unknown type name ‘FILE’
+
+
+
+BUG#5
+description:
+    miss right brace
+location:
+	if (!file)
+evidence:
+    error: expected identifier or ‘(’ before ‘while’
+
+
+
+BUG#6
+description:
+    wrong way to open the file
+location:
+	FILE* file = fopen(fn, "r");
+evidence:
+    error: unable to open file wrong.dat
+
+
+
+
+BUG#7
+description:
+    wrong cyclic condition
+location:
+	for (j = 0; j < 10; i++ ){
+evidence:
+    Segmentation fault
+
+
+
+BUG#8
+description:
+    too little buffer size;
+location:
+	char *buf = (char *)malloc(buf_size) ;
+evidence:	
+    Segmentation fault
+
+
+
+
+BUG#9
+description:
+    wrong buffer size
+location:
+    enum { rec_len = key_len + pad_len + recno_len};
+evidence:
+    The length of the output is shorter.
+
+
+
+
+BUG#10
+description:
+    cnt is larger than expected value
+location:
+    for (cnt = 0; (cnt <= buf_nrec) 
+evidence:
+    Segmentation fault
